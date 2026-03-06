@@ -18,6 +18,11 @@ func main() {
 	}
 	defer radio.Close()
 
+	nodeInfo(radio)
+
+}
+
+func nodeInfo(radio gomesh.Radio) {
 	responses, err := radio.GetRadioInfo()
 	if err != nil {
 		log.Fatal(err)
@@ -35,7 +40,6 @@ func main() {
 		if ni, ok := r.GetPayloadVariant().(*pb.FromRadio_NodeInfo); ok {
 			if myNum != 0 && ni.NodeInfo.Num == myNum {
 				myNode = ni.NodeInfo
-				fmt.Printf("ni.NodeInfo.Channel: %v\n", ni.NodeInfo.Channel)
 			}
 		}
 	}
