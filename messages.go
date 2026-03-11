@@ -82,6 +82,7 @@ func main() {
 				fmt.Printf("[MYINFO] myNodeNum=%d\n", v.MyInfo.GetMyNodeNum())
 
 			default:
+				// Можно оставить пусто, чтобы не шуметь логами
 			}
 		}
 
