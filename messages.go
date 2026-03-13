@@ -23,6 +23,7 @@ func main() {
 	defer radio.Close()
 
 	log.Println("bot started")
+	nodeInfo(radio)
 
 	for {
 		packets, err := radio.ReadResponse(true)
@@ -80,6 +81,9 @@ func main() {
 					} else {
 						reply = ansStr
 					}
+				case "/about":
+					reply = "Meshtastic бот на golang. Разработка: https://vakarian.website \n Репозиторий: https://github.com/vakarianplay/GoMeshtasticBot"
+
 				default:
 					continue
 				}
@@ -210,4 +214,46 @@ func getInfoSting() (string, error) {
 		now, r.Name, r.Main.Temp, r.Main.Humidity, desc,
 		locTime(r.Sys.Sunrise), locTime(r.Sys.Sunset),
 	), nil
+}
+
+func nodeInfo(radio gomesh.Radio) {
+	responses, err := radio.GetRadioInfo()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var myNum uint32
+	var myInfo *pb.FromRadio_MyInfo
+	var myNode *pb.NodeInfo
+
+	for _, r := range responses {
+		if info, ok := r.GetPayloadVariant().(*pb.FromRadio_MyInfo); ok {
+			myInfo = info
+			myNum = info.MyInfo.MyNodeNum
+		}
+		if ni, ok := r.GetPayloadVariant().(*pb.FromRadio_NodeInfo); ok {
+			if myNum != 0 && ni.NodeInfo.Num == myNum {
+				myNode = ni.NodeInfo
+			}
+		}
+	}
+
+	var metrics string
+	var name string
+	var userId string
+	if myNode != nil && myNode.User != nil && myNode.User.LongName != "" {
+		name = myNode.User.LongName
+		userId = myNode.User.Id
+		metrics = myNode.DeviceMetrics.String()
+	} else if myNode != nil && myNode.User != nil {
+		name = myNode.User.ShortName
+	}
+
+	fmt.Println("Node num: ", myNum)
+	fmt.Println("ID: ", userId)
+	fmt.Println("Name: ", name)
+	fmt.Println("Metrics: ", metrics)
+	if myInfo != nil && myInfo.MyInfo != nil {
+		fmt.Println("Node info: ", myInfo.MyInfo.String())
+	}
 }
