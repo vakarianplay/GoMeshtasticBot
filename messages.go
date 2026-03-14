@@ -22,9 +22,16 @@ func main() {
 	}
 	defer radio.Close()
 
-	log.Println("bot started")
 	nodeInfo(radio)
+	time.Sleep(200 * time.Millisecond)
 
+	if err := SaveAllNeighboursToCSV(getNeighbours(radio), "nodes.csv"); err != nil {
+		fmt.Println("save error:", err)
+	} else {
+		log.Println("Neighbours list update")
+	}
+
+	log.Println("=====B O T    S T A R T E D======\n")
 	for {
 		packets, err := radio.ReadResponse(true)
 		if err != nil {
@@ -32,7 +39,6 @@ func main() {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
-
 		for _, fr := range packets {
 			switch v := fr.GetPayloadVariant().(type) {
 			case *pb.FromRadio_MyInfo:
@@ -44,12 +50,10 @@ func main() {
 				if mp == nil {
 					continue
 				}
-
 				decoded := mp.GetDecoded()
 				if decoded == nil {
 					continue
 				}
-
 				if decoded.GetPortnum() != pb.PortNum_TEXT_MESSAGE_APP {
 					continue
 				}
@@ -58,11 +62,11 @@ func main() {
 				from := mp.GetFrom()
 				to := mp.GetTo()
 				ch := mp.GetChannel()
+				shortName, fullName, _ := GetNames("nodes.csv", fmt.Sprint(from))
 
-				log.Printf(
-					"[TEXT] my=%d from=%d to=%d (0x%08X) ch=%d id=%d: %s",
-					myNodeNum, from, to, to, ch, mp.GetId(), text,
-				)
+				log.Printf("[TEXT] my=%d from=%d to=%d (0x%08X) ch=%d id=%d  %s %s: %s", myNodeNum, from, to, to, ch, mp.GetId(), shortName, fullName, text)
+				info := fmt.Sprintf("HOPS=%d   RSSI=%d dBm    SNR=%.1f dB", mp.GetHopStart()-mp.GetHopLimit(), mp.GetRxRssi(), mp.GetRxSnr())
+				msgRelayer(text, shortName, fullName, fmt.Sprint(from), info)
 
 				// Не отвечаем сами себе (только если уже знаем myNodeNum)
 				if myNodeNum != 0 && from == myNodeNum {
@@ -226,12 +230,16 @@ func nodeInfo(radio gomesh.Radio) {
 	var myInfo *pb.FromRadio_MyInfo
 	var myNode *pb.NodeInfo
 
+	var neighbourd string
+
 	for _, r := range responses {
 		if info, ok := r.GetPayloadVariant().(*pb.FromRadio_MyInfo); ok {
 			myInfo = info
 			myNum = info.MyInfo.MyNodeNum
 		}
 		if ni, ok := r.GetPayloadVariant().(*pb.FromRadio_NodeInfo); ok {
+			neighbourd = neighbourd + (fmt.Sprint(ni.NodeInfo))
+			// log.Println(ni.NodeInfo)
 			if myNum != 0 && ni.NodeInfo.Num == myNum {
 				myNode = ni.NodeInfo
 			}
@@ -241,10 +249,12 @@ func nodeInfo(radio gomesh.Radio) {
 	var metrics string
 	var name string
 	var userId string
+	var model string
 	if myNode != nil && myNode.User != nil && myNode.User.LongName != "" {
 		name = myNode.User.LongName
 		userId = myNode.User.Id
 		metrics = myNode.DeviceMetrics.String()
+		model = myNode.User.HwModel.String()
 	} else if myNode != nil && myNode.User != nil {
 		name = myNode.User.ShortName
 	}
@@ -252,8 +262,32 @@ func nodeInfo(radio gomesh.Radio) {
 	fmt.Println("Node num: ", myNum)
 	fmt.Println("ID: ", userId)
 	fmt.Println("Name: ", name)
+	fmt.Println("Hardware: ", model)
 	fmt.Println("Metrics: ", metrics)
 	if myInfo != nil && myInfo.MyInfo != nil {
 		fmt.Println("Node info: ", myInfo.MyInfo.String())
 	}
+}
+
+func getNeighbours(radio gomesh.Radio) string {
+	var result string
+	responses, err := radio.GetRadioInfo()
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, r := range responses {
+		if ni, ok := r.GetPayloadVariant().(*pb.FromRadio_NodeInfo); ok {
+			result = result + (fmt.Sprint(ni.NodeInfo))
+			// log.Println(ni.NodeInfo)
+		}
+	}
+	return result
+}
+
+func msgRelayer(message, shortName, fullName, nodeId, info string) {
+	firstString := "(" + shortName + ")  " + fullName + " | id: " + nodeId
+	secondString := message
+	thirdString := info
+
+	fmt.Println(firstString, "\n\n", secondString, "\n\n", thirdString)
 }
