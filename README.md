@@ -14,3 +14,5 @@ Using go library goMesh: https://github.com/lmatte7/gomesh
 - [x] Get short and long names of nodes
 - [ ] Relay messages to telegram
 - [ ] Save messages to csv
+- [ ] Add yaml config
+- [ ] More commands
