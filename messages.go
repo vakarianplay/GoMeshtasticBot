@@ -68,7 +68,7 @@ func main() {
 				info := fmt.Sprintf("HOPS=%d   RSSI=%d dBm    SNR=%.1f dB", mp.GetHopStart()-mp.GetHopLimit(), mp.GetRxRssi(), mp.GetRxSnr())
 				msgRelayer(text, shortName, fullName, fmt.Sprint(from), info)
 
-				// Не отвечаем сами себе (только если уже знаем myNodeNum)
+				// Protection self-flood
 				if myNodeNum != 0 && from == myNodeNum {
 					continue
 				}
@@ -78,33 +78,24 @@ func main() {
 				case "/ping":
 					reply = buildPingReply(mp)
 				case "/info":
-					ansStr, err := getInfoSting()
-					if err != nil {
-						log.Printf("getInfoSting error: %v", err)
-						reply = "Ошибка получения погоды"
-					} else {
-						reply = ansStr
-					}
+					reply, _ = getInfoSting()
+				case "/rates":
+					reply = getRatesString()
+				case "/radiation":
+					reply = getRadiation()
 				case "/about":
-					reply = "Meshtastic бот на golang. Разработка: https://vakarian.website \n Репозиторий: https://github.com/vakarianplay/GoMeshtasticBot"
+					reply = "Meshtastic бот на golang. Разработка: https://vakarian.website\nРепозиторий: https://github.com/vakarianplay/GoMeshtasticBot"
 
 				default:
 					continue
 				}
 
-				// Определяем тип входящего:
-				// broadcast может быть 0 или 0xFFFFFFFF
+				// broadcast may be 0 or 0xFFFFFFFF
 				isBroadcast := to == 0 || to == ^uint32(0)
 				isLongFast := ch == 0
 
-				// Если myNodeNum пока 0, считаем любой non-broadcast как DM (fallback)
 				isDM := !isBroadcast && (myNodeNum == 0 || to == myNodeNum)
 				isPublicLongFast := isBroadcast && isLongFast
-
-				log.Printf(
-					"route: my=%d isDM=%v isBroadcast=%v isLongFast=%v isPublicLongFast=%v",
-					myNodeNum, isDM, isBroadcast, isLongFast, isPublicLongFast,
-				)
 
 				switch {
 				case isDM:
@@ -214,10 +205,75 @@ func getInfoSting() (string, error) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 
 	return fmt.Sprintf(
-		"Сейчас: %s | %s: %.1f°C, влажн. %d%%, %s | Рассвет: %s | Закат: %s",
+		"Сейчас: %s \n%s: %.1f°C, влажн. %d%%, %s | Рассвет: %s | Закат: %s",
 		now, r.Name, r.Main.Temp, r.Main.Humidity, desc,
 		locTime(r.Sys.Sunrise), locTime(r.Sys.Sunset),
 	), nil
+}
+
+func getRatesString() string {
+	// 1. Курс USD/RUB (Tinkoff)
+	rU, _ := http.Get("https://api.tinkoff.ru/v1/currency_rates?from=USD&to=RUB")
+	bU, _ := io.ReadAll(rU.Body)
+	var dU map[string]interface{}
+	json.Unmarshal(bU, &dU)
+	// Доступ по вашему пути: payload -> rates -> [2] -> buy
+	usd := dU["payload"].(map[string]interface{})["rates"].([]interface{})[2].(map[string]interface{})["buy"]
+
+	// 2. Курс EUR/RUB (Tinkoff)
+	rE, _ := http.Get("https://api.tinkoff.ru/v1/currency_rates?from=EUR&to=RUB")
+	bE, _ := io.ReadAll(rE.Body)
+	var dE map[string]interface{}
+	json.Unmarshal(bE, &dE)
+	eur := dE["payload"].(map[string]interface{})["rates"].([]interface{})[2].(map[string]interface{})["buy"]
+
+	// 3. Криптовалюты (Binance)
+	rC, _ := http.Get(`https://api.binance.com/api/v3/ticker/price?symbols=["BTCUSDT","ETHUSDT","TRXUSDT","TONUSDT"]`)
+	bC, _ := io.ReadAll(rC.Body)
+	var dC []map[string]interface{}
+	json.Unmarshal(bC, &dC)
+
+	// Карта для хранения обработанных цен крипты
+	crypto := make(map[string]string)
+	for _, v := range dC {
+		symbol := v["symbol"].(string)
+		price := v["price"].(string)
+		// Убираем лишние нули в дробной части и точку, если число целое
+		cleanPrice := strings.TrimRight(strings.TrimRight(price, "0"), ".")
+		crypto[symbol] = cleanPrice
+	}
+
+	// Возврат результата в одну строку
+	return fmt.Sprintf("USD/RUB: %v | EUR/RUB: %v\nBTC/USD: %s | ETH/USD: %s | TRX/USD: %s | TON/USD: %s",
+		usd, eur, crypto["BTCUSDT"], crypto["ETHUSDT"], crypto["TRXUSDT"], crypto["TONUSDT"])
+}
+
+func getRadiation() string {
+	// Делаем запрос к API Народного Мониторинга
+	resp, _ := http.Get("http://api.narodmon.ru/sensorsOnDevice?id=2860&api_key=w2SD8VtRwkzeF&uuid=d2a57dc1d883fd21fb9951699df71cc7&lang=ru")
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	// Парсим JSON в универсальную карту
+	var data map[string]interface{}
+	json.Unmarshal(body, &data)
+
+	// Извлекаем список датчиков из "sensors"
+	sensors, ok := data["sensors"].([]interface{})
+	if !ok {
+		return "Ошибка данных"
+	}
+
+	// Ищем датчик с именем "Радиация"
+	for _, s := range sensors {
+		sensor := s.(map[string]interface{})
+		if sensor["name"] == "Радиация" {
+			// Возвращаем результат с полученным значением
+			return fmt.Sprintf("Радиация %v мкрР/час", sensor["value"])
+		}
+	}
+
+	return "Датчик не найден"
 }
 
 func nodeInfo(radio gomesh.Radio) {
