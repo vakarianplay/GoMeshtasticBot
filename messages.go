@@ -32,6 +32,7 @@ func main() {
 	}
 
 	log.Println("=====B O T    S T A R T E D======\n")
+	sendToMatrix("bot started")
 	for {
 		packets, err := radio.ReadResponse(true)
 		if err != nil {
@@ -346,4 +347,5 @@ func msgRelayer(message, shortName, fullName, nodeId, info string) {
 	thirdString := info
 
 	fmt.Println(firstString, "\n\n", secondString, "\n\n", thirdString)
+	sendToMatrix(fmt.Sprintf("%s\n\n%s\n\n%s", firstString, secondString, thirdString))
 }
