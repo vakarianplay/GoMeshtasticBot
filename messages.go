@@ -26,37 +26,99 @@ type nodeCfg struct {
 }
 
 func main() {
-	nodeConfig.nodePort, nodeConfig.nodeInfoText, nodeConfig.openweathermapApiKey, nodeConfig.openweathermapCity,
-		nodeConfig.narodmonApiKey, nodeConfig.narodmonUuid, nodeConfig.narodmonSensorId = GetMeshConfig()
+	nodeConfig.nodePort,
+		nodeConfig.nodeInfoText,
+		nodeConfig.openweathermapApiKey,
+		nodeConfig.openweathermapCity,
+		nodeConfig.narodmonApiKey,
+		nodeConfig.narodmonUuid,
+		nodeConfig.narodmonSensorId = GetMeshConfig()
 
 	RelayMesaage("=== MESH RELAYER START ===")
 
+	attempt := 0
+	for {
+		started := time.Now()
+		err := runBotSession(nodeConfig.nodePort)
+		if err != nil {
+			log.Printf("session ended: %v", err)
+		}
+
+		// Если сессия пожила нормально, сбрасываем backoff
+		if time.Since(started) > 2*time.Minute {
+			attempt = 0
+		} else {
+			attempt++
+		}
+
+		delay := reconnectDelay(attempt)
+		log.Printf("connection lost, reconnect in %s...", delay)
+		time.Sleep(delay)
+	}
+}
+
+func reconnectDelay(attempt int) time.Duration {
+	switch {
+	case attempt <= 1:
+		return 1 * time.Second
+	case attempt == 2:
+		return 2 * time.Second
+	case attempt == 3:
+		return 4 * time.Second
+	case attempt == 4:
+		return 8 * time.Second
+	case attempt == 5:
+		return 15 * time.Second
+	default:
+		return 30 * time.Second
+	}
+}
+
+func runBotSession(port string) error {
 	var radio gomesh.Radio
 	var myNodeNum uint32
 
-	if err := radio.Init(nodeConfig.nodePort); err != nil {
-		log.Fatalf("init error: %v", err)
+	if err := radio.Init(port); err != nil {
+		return fmt.Errorf("init error: %w", err)
 	}
 	defer radio.Close()
 
-	nodeInfo(radio)
-	time.Sleep(200 * time.Millisecond)
+	log.Printf("connected to node: %s", port)
 
-	if err := SaveAllNeighboursToCSV(getNeighbours(radio), "nodes.csv"); err != nil {
-		fmt.Println("save error:", err)
+	if err := nodeInfo(&radio); err != nil {
+		log.Printf("nodeInfo error: %v", err)
+	}
+
+	if neighbours, err := getNeighbours(&radio); err != nil {
+		log.Printf("getNeighbours error: %v", err)
+	} else if err := SaveAllNeighboursToCSV(neighbours, "nodes.csv"); err != nil {
+		log.Printf("save neighbours error: %v", err)
 	} else {
 		log.Println("Neighbours list update")
 	}
 
-	log.Println("=====B O T    S T A R T E D======\n")
+	log.Println("===== B O T    S T A R T E D ======")
+
+	neighTicker := time.NewTicker(10 * time.Minute)
+	defer neighTicker.Stop()
+
+	heartbeatTicker := time.NewTicker(20 * time.Second)
+	defer heartbeatTicker.Stop()
+
+	lastRx := time.Now()
+	heartbeatErrors := 0
 
 	for {
-		packets, err := radio.ReadResponse(true)
+		// Неблокирующее чтение: чтобы не зависать навсегда при разрыве.
+		packets, err := radio.ReadResponse(false)
 		if err != nil {
-			log.Printf("read error: %v", err)
-			time.Sleep(500 * time.Millisecond)
-			continue
+			return fmt.Errorf("read error: %w", err)
 		}
+
+		if len(packets) > 0 {
+			lastRx = time.Now()
+		}
+
 		for _, fr := range packets {
 			switch v := fr.GetPayloadVariant().(type) {
 			case *pb.FromRadio_MyInfo:
@@ -80,10 +142,21 @@ func main() {
 				from := mp.GetFrom()
 				to := mp.GetTo()
 				ch := mp.GetChannel()
+
 				shortName, fullName, _ := GetNames("nodes.csv", fmt.Sprint(from))
 
-				log.Printf("[TEXT] my=%d from=%d to=%d (0x%08X) ch=%d id=%d  %s %s: %s", myNodeNum, from, to, to, ch, mp.GetId(), shortName, fullName, text)
-				info := fmt.Sprintf("HOPS=%d   RSSI=%d dBm    SNR=%.1f dB", mp.GetHopStart()-mp.GetHopLimit(), mp.GetRxRssi(), mp.GetRxSnr())
+				log.Printf(
+					"[TEXT] my=%d from=%d to=%d (0x%08X) ch=%d id=%d %s %s: %s",
+					myNodeNum, from, to, to, ch, mp.GetId(),
+					shortName, fullName, text,
+				)
+
+				info := fmt.Sprintf(
+					"HOPS=%d   RSSI=%d dBm    SNR=%.1f dB",
+					mp.GetHopStart()-mp.GetHopLimit(),
+					mp.GetRxRssi(),
+					mp.GetRxSnr(),
+				)
 				msgRelayer(text, shortName, fullName, fmt.Sprint(from), info)
 
 				// Protection self-flood
@@ -96,7 +169,12 @@ func main() {
 				case "/ping":
 					reply = buildPingReply(mp)
 				case "/info":
-					reply, _ = getInfoSting()
+					ans, err := getInfoSting()
+					if err != nil {
+						reply = "Ошибка получения погоды"
+					} else {
+						reply = ans
+					}
 				case "/rates":
 					reply = getRatesString()
 				case "/radiation":
@@ -105,21 +183,17 @@ func main() {
 					reply = nodeConfig.nodeInfoText
 				case "/about":
 					reply = "Meshtastic бот на golang. Разработка: https://vakarian.website\nРепозиторий: https://github.com/vakarianplay/GoMeshtasticBot"
-
 				default:
 					continue
 				}
 
-				// broadcast may be 0 or 0xFFFFFFFF
 				isBroadcast := to == 0 || to == ^uint32(0)
 				isLongFast := ch == 0
-
 				isDM := !isBroadcast && (myNodeNum == 0 || to == myNodeNum)
 				isPublicLongFast := isBroadcast && isLongFast
 
 				switch {
 				case isDM:
-					// Ответ в личку отправителю
 					if err := radio.SendTextMessage(reply, int64(from), 0); err != nil {
 						log.Printf("send DM error: %v", err)
 					} else {
@@ -127,7 +201,6 @@ func main() {
 					}
 
 				case isPublicLongFast:
-					// Ответ в публичный LongFast (channel 0)
 					if err := radio.SendTextMessage(reply, 0, int64(ch)); err != nil {
 						log.Printf("send public error: %v", err)
 					} else {
@@ -140,15 +213,45 @@ func main() {
 			}
 		}
 
-		time.Sleep(200 * time.Millisecond)
+		select {
+		case <-neighTicker.C:
+			neighbours, err := getNeighbours(&radio)
+			if err != nil {
+				return fmt.Errorf("getNeighbours failed: %w", err)
+			}
+			if err := SaveAllNeighboursToCSV(neighbours, "nodes.csv"); err != nil {
+				log.Printf("save neighbours error: %v", err)
+			} else {
+				log.Println("Neighbours list update")
+			}
+
+		case <-heartbeatTicker.C:
+			// Если давно ничего не принимали — проверяем, жив ли линк.
+			if time.Since(lastRx) > 40*time.Second {
+				_, err := radio.GetRadioInfo()
+				if err != nil {
+					heartbeatErrors++
+					log.Printf("heartbeat error (%d/3): %v", heartbeatErrors, err)
+					if heartbeatErrors >= 3 {
+						return fmt.Errorf("connection lost (heartbeat failed)")
+					}
+				} else {
+					heartbeatErrors = 0
+				}
+			} else {
+				heartbeatErrors = 0
+			}
+
+		default:
+			time.Sleep(200 * time.Millisecond)
+		}
 	}
 }
 
 func buildPingReply(mp *pb.MeshPacket) string {
-	rssi := mp.GetRxRssi() // dBm
-	snr := mp.GetRxSnr()   // dB
+	rssi := mp.GetRxRssi()
+	snr := mp.GetRxSnr()
 
-	// hops = hop_start - hop_limit
 	hopStart := int64(mp.GetHopStart())
 	hopLimit := int64(mp.GetHopLimit())
 
@@ -173,7 +276,8 @@ func getInfoSting() (string, error) {
 
 	url := fmt.Sprintf(
 		"https://api.openweathermap.org/data/2.5/weather?q=%s&units=metric&lang=ru&appid=%s",
-		nodeConfig.openweathermapCity, apiKey)
+		nodeConfig.openweathermapCity, apiKey,
+	)
 
 	c := &http.Client{Timeout: 6 * time.Second}
 	resp, err := c.Get(url)
@@ -182,7 +286,7 @@ func getInfoSting() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf(
 			"owm status %d: %s",
@@ -231,71 +335,160 @@ func getInfoSting() (string, error) {
 }
 
 func getRatesString() string {
-	// 1. Курс USD/RUB (Tinkoff)
-	rU, _ := http.Get("https://api.tinkoff.ru/v1/currency_rates?from=USD&to=RUB")
-	bU, _ := io.ReadAll(rU.Body)
-	var dU map[string]interface{}
-	json.Unmarshal(bU, &dU)
-	// Доступ по вашему пути: payload -> rates -> [2] -> buy
-	usd := dU["payload"].(map[string]interface{})["rates"].([]interface{})[2].(map[string]interface{})["buy"]
+	client := &http.Client{Timeout: 6 * time.Second}
 
-	// 2. Курс EUR/RUB (Tinkoff)
-	rE, _ := http.Get("https://api.tinkoff.ru/v1/currency_rates?from=EUR&to=RUB")
-	bE, _ := io.ReadAll(rE.Body)
-	var dE map[string]interface{}
-	json.Unmarshal(bE, &dE)
-	eur := dE["payload"].(map[string]interface{})["rates"].([]interface{})[2].(map[string]interface{})["buy"]
+	usd := "n/a"
+	eur := "n/a"
+	btc := "n/a"
+	eth := "n/a"
+	trx := "n/a"
+	ton := "n/a"
 
-	// 3. Криптовалюты (Binance)
-	rC, _ := http.Get(`https://api.binance.com/api/v3/ticker/price?symbols=["BTCUSDT","ETHUSDT","TRXUSDT","TONUSDT"]`)
-	bC, _ := io.ReadAll(rC.Body)
-	var dC []map[string]interface{}
-	json.Unmarshal(bC, &dC)
-
-	// Карта для хранения обработанных цен крипты
-	crypto := make(map[string]string)
-	for _, v := range dC {
-		symbol := v["symbol"].(string)
-		price := v["price"].(string)
-		// Убираем лишние нули в дробной части и точку, если число целое
-		cleanPrice := strings.TrimRight(strings.TrimRight(price, "0"), ".")
-		crypto[symbol] = cleanPrice
+	if v, err := tinkoffBuy(
+		client,
+		"https://api.tinkoff.ru/v1/currency_rates?from=USD&to=RUB",
+	); err == nil {
+		usd = v
 	}
 
-	// Возврат результата в одну строку
-	return fmt.Sprintf("USD/RUB: %v | EUR/RUB: %v\nBTC/USD: %s | ETH/USD: %s | TRX/USD: %s | TON/USD: %s",
-		usd, eur, crypto["BTCUSDT"], crypto["ETHUSDT"], crypto["TRXUSDT"], crypto["TONUSDT"])
+	if v, err := tinkoffBuy(
+		client,
+		"https://api.tinkoff.ru/v1/currency_rates?from=EUR&to=RUB",
+	); err == nil {
+		eur = v
+	}
+
+	if c, err := binancePrices(client); err == nil {
+		if v, ok := c["BTCUSDT"]; ok {
+			btc = v
+		}
+		if v, ok := c["ETHUSDT"]; ok {
+			eth = v
+		}
+		if v, ok := c["TRXUSDT"]; ok {
+			trx = v
+		}
+		if v, ok := c["TONUSDT"]; ok {
+			ton = v
+		}
+	}
+
+	return fmt.Sprintf(
+		"USD/RUB: %s | EUR/RUB: %s\nBTC/USD: %s | ETH/USD: %s | TRX/USD: %s | TON/USD: %s",
+		usd, eur, btc, eth, trx, ton,
+	)
+}
+
+func tinkoffBuy(client *http.Client, url string) (string, error) {
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var d map[string]interface{}
+	if err := json.Unmarshal(b, &d); err != nil {
+		return "", err
+	}
+
+	payload, ok := d["payload"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("bad payload")
+	}
+
+	rates, ok := payload["rates"].([]interface{})
+	if !ok || len(rates) == 0 {
+		return "", fmt.Errorf("bad rates")
+	}
+
+	for _, rr := range rates {
+		m, ok := rr.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if buy, ok := m["buy"]; ok {
+			return fmt.Sprint(buy), nil
+		}
+	}
+
+	return "", fmt.Errorf("buy not found")
+}
+
+func binancePrices(client *http.Client) (map[string]string, error) {
+	u := `https://api.binance.com/api/v3/ticker/price?symbols=["BTCUSDT","ETHUSDT","TRXUSDT","TONUSDT"]`
+	resp, err := client.Get(u)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var d []map[string]interface{}
+	if err := json.Unmarshal(b, &d); err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]string, len(d))
+	for _, v := range d {
+		symbol, _ := v["symbol"].(string)
+		price, _ := v["price"].(string)
+		if symbol == "" {
+			continue
+		}
+		out[symbol] = strings.TrimRight(strings.TrimRight(price, "0"), ".")
+	}
+
+	return out, nil
 }
 
 func getRadiation() string {
 	apiKey := nodeConfig.narodmonApiKey
 	if apiKey == "" {
-		return ""
+		return "API ключ не задан"
 	}
 
-	url := fmt.Sprintf("http://api.narodmon.ru/sensorsOnDevice?id=%s&api_key=%s&uuid=%s&lang=ru",
-		nodeConfig.narodmonSensorId, apiKey, nodeConfig.narodmonUuid)
+	url := fmt.Sprintf(
+		"http://api.narodmon.ru/sensorsOnDevice?id=%s&api_key=%s&uuid=%s&lang=ru",
+		nodeConfig.narodmonSensorId, apiKey, nodeConfig.narodmonUuid,
+	)
 
-	// Делаем запрос к API Народного Мониторинга
-	resp, _ := http.Get(url)
+	client := &http.Client{Timeout: 6 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "Ошибка запроса"
+	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
 
-	// Парсим JSON в универсальную карту
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "Ошибка чтения данных"
+	}
+
 	var data map[string]interface{}
-	json.Unmarshal(body, &data)
+	if err := json.Unmarshal(body, &data); err != nil {
+		return "Ошибка парсинга данных"
+	}
 
-	// Извлекаем список датчиков из "sensors"
 	sensors, ok := data["sensors"].([]interface{})
 	if !ok {
 		return "Ошибка данных"
 	}
 
-	// Ищем датчик с именем "Радиация"
 	for _, s := range sensors {
-		sensor := s.(map[string]interface{})
-		if sensor["name"] == "Радиация" {
-			// Возвращаем результат с полученным значением
+		sensor, ok := s.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if fmt.Sprint(sensor["name"]) == "Радиация" {
 			return fmt.Sprintf("Радиация %v мкрР/час", sensor["value"])
 		}
 	}
@@ -303,17 +496,15 @@ func getRadiation() string {
 	return "Датчик не найден"
 }
 
-func nodeInfo(radio gomesh.Radio) {
+func nodeInfo(radio *gomesh.Radio) error {
 	responses, err := radio.GetRadioInfo()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	var myNum uint32
 	var myInfo *pb.FromRadio_MyInfo
 	var myNode *pb.NodeInfo
-
-	var neighbourd string
 
 	for _, r := range responses {
 		if info, ok := r.GetPayloadVariant().(*pb.FromRadio_MyInfo); ok {
@@ -321,8 +512,6 @@ func nodeInfo(radio gomesh.Radio) {
 			myNum = info.MyInfo.MyNodeNum
 		}
 		if ni, ok := r.GetPayloadVariant().(*pb.FromRadio_NodeInfo); ok {
-			neighbourd = neighbourd + (fmt.Sprint(ni.NodeInfo))
-			// log.Println(ni.NodeInfo)
 			if myNum != 0 && ni.NodeInfo.Num == myNum {
 				myNode = ni.NodeInfo
 			}
@@ -350,21 +539,24 @@ func nodeInfo(radio gomesh.Radio) {
 	if myInfo != nil && myInfo.MyInfo != nil {
 		fmt.Println("Node info: ", myInfo.MyInfo.String())
 	}
+
+	return nil
 }
 
-func getNeighbours(radio gomesh.Radio) string {
+func getNeighbours(radio *gomesh.Radio) (string, error) {
 	var result string
+
 	responses, err := radio.GetRadioInfo()
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
+
 	for _, r := range responses {
 		if ni, ok := r.GetPayloadVariant().(*pb.FromRadio_NodeInfo); ok {
-			result = result + (fmt.Sprint(ni.NodeInfo))
-			// log.Println(ni.NodeInfo)
+			result += fmt.Sprint(ni.NodeInfo)
 		}
 	}
-	return result
+	return result, nil
 }
 
 func msgRelayer(message, shortName, fullName, nodeId, info string) {
@@ -373,6 +565,6 @@ func msgRelayer(message, shortName, fullName, nodeId, info string) {
 	thirdString := info
 
 	fmt.Println(firstString, "\n\n", secondString, "\n\n", thirdString)
-	// sendToMatrix(fmt.Sprintf("%s\n\n%s\n\n%s", firstString, secondString, thirdString))
-	RelayMesaage(fmt.Sprintf("📶 %s\n\n%s\n\n✔ %s", firstString, secondString, thirdString))
+	RelayMesaage(fmt.Sprintf("📶 %s\n\n%s\n\n✔ %s",
+		firstString, secondString, thirdString))
 }
