@@ -12,7 +12,7 @@ Using go library goMesh: https://github.com/lmatte7/gomesh
 - [x] Send to LongFast and to DM
 - [x] Get neighbours nodes. Save to csv
 - [x] Get short and long names of nodes
-- [ ] Relay messages to telegram
-- [ ] Save messages to csv
-- [ ] Add yaml config
+- [x] Relay messages to telegram
+- [x] Relay to matrix
+- [x] Add yaml config
 - [ ] More commands
