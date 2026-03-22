@@ -44,7 +44,6 @@ func main() {
 			log.Printf("session ended: %v", err)
 		}
 
-		// Если сессия пожила нормально, сбрасываем backoff
 		if time.Since(started) > 2*time.Minute {
 			attempt = 0
 		} else {
@@ -109,7 +108,7 @@ func runBotSession(port string) error {
 	heartbeatErrors := 0
 
 	for {
-		// Неблокирующее чтение: чтобы не зависать навсегда при разрыве.
+		// No-blocked reading
 		packets, err := radio.ReadResponse(false)
 		if err != nil {
 			return fmt.Errorf("read error: %w", err)
@@ -171,7 +170,7 @@ func runBotSession(port string) error {
 				case "/info":
 					ans, err := getInfoSting()
 					if err != nil {
-						reply = "Ошибка получения погоды"
+						reply = "Ошибка получения данных"
 					} else {
 						reply = ans
 					}
@@ -183,6 +182,8 @@ func runBotSession(port string) error {
 					reply = nodeConfig.nodeInfoText
 				case "/about":
 					reply = "Meshtastic бот на golang. Разработка: https://vakarian.website\nРепозиторий: https://github.com/vakarianplay/GoMeshtasticBot"
+				case "/help":
+					reply = "/ping - пинг\n/info - погода\n/radiation - радиация\n/rates - курс валют\n/nodeinfo - о ноде\n/about - о боте"
 				default:
 					continue
 				}
@@ -226,7 +227,6 @@ func runBotSession(port string) error {
 			}
 
 		case <-heartbeatTicker.C:
-			// Если давно ничего не принимали — проверяем, жив ли линк.
 			if time.Since(lastRx) > 40*time.Second {
 				_, err := radio.GetRadioInfo()
 				if err != nil {
@@ -344,17 +344,11 @@ func getRatesString() string {
 	trx := "n/a"
 	ton := "n/a"
 
-	if v, err := tinkoffBuy(
-		client,
-		"https://api.tinkoff.ru/v1/currency_rates?from=USD&to=RUB",
-	); err == nil {
+	if v, err := tinkoffPrices(client, "https://api.tinkoff.ru/v1/currency_rates?from=USD&to=RUB"); err == nil {
 		usd = v
 	}
 
-	if v, err := tinkoffBuy(
-		client,
-		"https://api.tinkoff.ru/v1/currency_rates?from=EUR&to=RUB",
-	); err == nil {
+	if v, err := tinkoffPrices(client, "https://api.tinkoff.ru/v1/currency_rates?from=EUR&to=RUB"); err == nil {
 		eur = v
 	}
 
@@ -379,7 +373,7 @@ func getRatesString() string {
 	)
 }
 
-func tinkoffBuy(client *http.Client, url string) (string, error) {
+func tinkoffPrices(client *http.Client, url string) (string, error) {
 	resp, err := client.Get(url)
 	if err != nil {
 		return "", err
@@ -453,7 +447,7 @@ func binancePrices(client *http.Client) (map[string]string, error) {
 func getRadiation() string {
 	apiKey := nodeConfig.narodmonApiKey
 	if apiKey == "" {
-		return "API ключ не задан"
+		return "empty apiKey"
 	}
 
 	url := fmt.Sprintf(
@@ -464,23 +458,23 @@ func getRadiation() string {
 	client := &http.Client{Timeout: 6 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		return "Ошибка запроса"
+		return "Narodmon bad request"
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "Ошибка чтения данных"
+		return "Error read responce"
 	}
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
-		return "Ошибка парсинга данных"
+		return "Json error"
 	}
 
 	sensors, ok := data["sensors"].([]interface{})
 	if !ok {
-		return "Ошибка данных"
+		return "Narodmon data error"
 	}
 
 	for _, s := range sensors {

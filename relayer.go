@@ -99,6 +99,5 @@ func sendToTelegram(message string) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("telegram api status: %s", resp.Status)
 	}
-
 	return nil
 }
