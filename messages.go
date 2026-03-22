@@ -13,11 +13,28 @@ import (
 	pb "github.com/lmatte7/gomesh/github.com/meshtastic/gomeshproto"
 )
 
+var nodeConfig nodeCfg
+
+type nodeCfg struct {
+	nodePort             string
+	nodeInfoText         string
+	openweathermapApiKey string
+	openweathermapCity   string
+	narodmonApiKey       string
+	narodmonUuid         string
+	narodmonSensorId     string
+}
+
 func main() {
+	nodeConfig.nodePort, nodeConfig.nodeInfoText, nodeConfig.openweathermapApiKey, nodeConfig.openweathermapCity,
+		nodeConfig.narodmonApiKey, nodeConfig.narodmonUuid, nodeConfig.narodmonSensorId = GetMeshConfig()
+
+	RelayMesaage("=== MESH RELAYER START ===")
+
 	var radio gomesh.Radio
 	var myNodeNum uint32
 
-	if err := radio.Init("192.168.88.45"); err != nil {
+	if err := radio.Init(nodeConfig.nodePort); err != nil {
 		log.Fatalf("init error: %v", err)
 	}
 	defer radio.Close()
@@ -32,7 +49,7 @@ func main() {
 	}
 
 	log.Println("=====B O T    S T A R T E D======\n")
-	sendToMatrix("bot started")
+
 	for {
 		packets, err := radio.ReadResponse(true)
 		if err != nil {
@@ -84,6 +101,8 @@ func main() {
 					reply = getRatesString()
 				case "/radiation":
 					reply = getRadiation()
+				case "/nodeinfo":
+					reply = nodeConfig.nodeInfoText
 				case "/about":
 					reply = "Meshtastic бот на golang. Разработка: https://vakarian.website\nРепозиторий: https://github.com/vakarianplay/GoMeshtasticBot"
 
@@ -141,21 +160,20 @@ func buildPingReply(mp *pb.MeshPacket) string {
 	}
 
 	return fmt.Sprintf(
-		"pong | RSSI: %d dBm | SNR: %.1f dB | hops: %d",
+		"📶 pong\n📶 RSSI: %d dBm | SNR: %.1f dB | hops: %d",
 		rssi, snr, hops,
 	)
 }
 
 func getInfoSting() (string, error) {
-	apiKey := "28bc310f78d0674674d5ca06e7a2a556"
+	apiKey := nodeConfig.openweathermapApiKey
 	if apiKey == "" {
 		return "", fmt.Errorf("empty apiKey")
 	}
 
 	url := fmt.Sprintf(
-		"https://api.openweathermap.org/data/2.5/weather?q=Elektrostal,RU&units=metric&lang=ru&appid=%s",
-		apiKey,
-	)
+		"https://api.openweathermap.org/data/2.5/weather?q=%s&units=metric&lang=ru&appid=%s",
+		nodeConfig.openweathermapCity, apiKey)
 
 	c := &http.Client{Timeout: 6 * time.Second}
 	resp, err := c.Get(url)
@@ -250,8 +268,16 @@ func getRatesString() string {
 }
 
 func getRadiation() string {
+	apiKey := nodeConfig.narodmonApiKey
+	if apiKey == "" {
+		return ""
+	}
+
+	url := fmt.Sprintf("http://api.narodmon.ru/sensorsOnDevice?id=%s&api_key=%s&uuid=%s&lang=ru",
+		nodeConfig.narodmonSensorId, apiKey, nodeConfig.narodmonUuid)
+
 	// Делаем запрос к API Народного Мониторинга
-	resp, _ := http.Get("http://api.narodmon.ru/sensorsOnDevice?id=2860&api_key=w2SD8VtRwkzeF&uuid=d2a57dc1d883fd21fb9951699df71cc7&lang=ru")
+	resp, _ := http.Get(url)
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
@@ -347,5 +373,6 @@ func msgRelayer(message, shortName, fullName, nodeId, info string) {
 	thirdString := info
 
 	fmt.Println(firstString, "\n\n", secondString, "\n\n", thirdString)
-	sendToMatrix(fmt.Sprintf("%s\n\n%s\n\n%s", firstString, secondString, thirdString))
+	// sendToMatrix(fmt.Sprintf("%s\n\n%s\n\n%s", firstString, secondString, thirdString))
+	RelayMesaage(fmt.Sprintf("📶 %s\n\n%s\n\n✔ %s", firstString, secondString, thirdString))
 }

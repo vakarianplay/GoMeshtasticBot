@@ -13,17 +13,6 @@ import (
 	"strconv"
 )
 
-// const (
-// 	matrixHomeserver = "https://matrix.raspad.space"
-// 	matrixUsername   = "meshrelayer"
-// 	matrixPassword   = "aczBRERO3LcOMff"
-// 	matrixDeviceID   = "MESHBOT"
-// 	matrixRoomID     = "!mSmjqRsxficDk2Xxw6:matrix.raspad.space"
-
-// 	telegramBotToken       = "8616957483:AAHW4t-HAj06dvf5YxcF_9JDvGmA_XH7Roo"
-// 	telegramChatID   int64 = -5237468793
-// )
-
 var relayConfig relayCfg
 
 type relayCfg struct {
@@ -50,8 +39,13 @@ func configRelay() {
 
 func RelayMesaage(message string) {
 	configRelay()
-	sendToMatrix(message)
-	sendToTelegram(message)
+
+	if matrixFlag {
+		sendToMatrix(message)
+	}
+	if tgFlag {
+		sendToTelegram(message)
+	}
 }
 
 func sendToMatrix(message string) error {
