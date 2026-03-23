@@ -1,0 +1,26 @@
+mesh:
+    port: node_port or node_ip
+    node_info_text: Your text for /nodeinfo command
+    openweathermap_api_key: api_key
+    openweathermap_city: Moscow,RU
+    narodmon_api_key: api_key
+    narodmon_uuid: random uuid
+    narodmon_sensor_id: sensor_id
+
+
+matrix-relay:
+    enabled: true
+    homeserver: https://matrix.org
+    username: user
+    password: pass
+    device_id: MESHBOT
+    matrixRoomID: "!room_id:matrix.org"
+
+telegram-relay:
+    enabled: true
+    botToken: tg_bot_token
+    chatID: tg_chat_id
+    
+
+
+
