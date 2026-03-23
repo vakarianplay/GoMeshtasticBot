@@ -1,5 +1,6 @@
 # GoMeshtasticBot
-Informer and logger for meshtastic
+
+Informer bot for meshtastic and relayer to telegram and matrix
 
 Using go library goMesh: https://github.com/lmatte7/gomesh
 
