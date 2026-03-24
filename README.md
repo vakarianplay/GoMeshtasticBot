@@ -29,6 +29,7 @@
 >* Integration with narodmon.ru
 >* Relay messages from radio to telegtam group
 >* Relay messages to matrix room (without enctyprion)
+>* Auto trying to reconnect 
 
 
 ## 🚀 How to start
