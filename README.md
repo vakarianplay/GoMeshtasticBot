@@ -36,7 +36,7 @@
 
 >* [Download release for your platform](https://github.com/vakarianplay/GoMeshtasticBot/releases/tag/v1.0)
 >* Connect your meshtastic node to wi-fi or usb
->* Edit config.yml for your configuration
+>* Edit [config.yml](https://raw.githubusercontent.com/vakarianplay/GoMeshtasticBot/refs/heads/main/config.yml) for your configuration
 >* Run execute
 
 
