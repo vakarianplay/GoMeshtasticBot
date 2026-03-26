@@ -42,19 +42,19 @@ func configRelay() {
 	matrixFlag, _ = strconv.ParseBool(relayConfig.enabledMatrix)
 	tgFlag, _ = strconv.ParseBool(relayConfig.enabledTelegram)
 	customFlag, _ = strconv.ParseBool(relayConfig.enabledCustom)
-
-	fmt.Println(relayConfig.customServerToken)
 }
 
 func RelayMesaage(message string) {
 	configRelay()
-	sendToCustomServer(message)
 
 	if matrixFlag {
 		sendToMatrix(message)
 	}
 	if tgFlag {
 		sendToTelegram(message)
+	}
+	if customFlag {
+		sendToCustomServer(message)
 	}
 
 }
@@ -118,8 +118,6 @@ func sendToCustomServer(message string) error {
 	if err != nil {
 		return err
 	}
-
-	fmt.Println(relayConfig.customServerURL, relayConfig.customServerToken, message)
 
 	req.Header.Set("X-Auth-Token", relayConfig.customServerToken)
 
