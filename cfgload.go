@@ -41,6 +41,10 @@ func readCfg() []string {
 	telegramChatId := (cfgYaml["telegram-relay"].(map[string]interface{})["chatID"])
 	enabled_telegram := (cfgYaml["telegram-relay"].(map[string]interface{})["enabled"])
 
+	enabled_custom := (cfgYaml["custom-relay"].(map[string]interface{})["enabled"])
+	custom_relay_url := (cfgYaml["custom-relay"].(map[string]interface{})["url"])
+	custom_relay_auth_token := (cfgYaml["custom-relay"].(map[string]interface{})["authToken"])
+
 	port_ := fmt.Sprintf("%v", port)
 	nodeInfoText_ := fmt.Sprintf("%v", nodeInfoText)
 	openweathermapApiKey_ := fmt.Sprintf("%v", openweathermapApiKey)
@@ -59,8 +63,12 @@ func readCfg() []string {
 	telegramChatId_ := fmt.Sprintf("%v", telegramChatId)
 	enabled_telegram_ := fmt.Sprintf("%v", enabled_telegram)
 
+	enabled_custom_ := fmt.Sprintf("%v", enabled_custom)
+	custom_relay_url_ := fmt.Sprintf("%v", custom_relay_url)
+	custom_relay_auth_token_ := fmt.Sprintf("%v", custom_relay_auth_token)
+
 	var out []string
-	out = append(out, homeserver_, username_, password_, device_id_, target_room_, enabled_matrix_, telegramBotToken_, telegramChatId_, enabled_telegram_, port_, nodeInfoText_, openweathermapApiKey_, openweathermapCity_, narodmonApiKey_, narodmonUuid_, narodmonSensorId_)
+	out = append(out, homeserver_, username_, password_, device_id_, target_room_, enabled_matrix_, telegramBotToken_, telegramChatId_, enabled_telegram_, port_, nodeInfoText_, openweathermapApiKey_, openweathermapCity_, narodmonApiKey_, narodmonUuid_, narodmonSensorId_, enabled_custom_, custom_relay_url_, custom_relay_auth_token_)
 
 	// fmt.Println(out)
 	return out
@@ -79,4 +87,9 @@ func GetTelegramConfig() (string, string, string) {
 func GetMeshConfig() (string, string, string, string, string, string, string) {
 	cfg := readCfg()
 	return cfg[9], cfg[10], cfg[11], cfg[12], cfg[13], cfg[14], cfg[15]
+}
+
+func GetCustomRelayConfig() (string, string, string) {
+	cfg := readCfg()
+	return cfg[16], cfg[17], cfg[18]
 }
