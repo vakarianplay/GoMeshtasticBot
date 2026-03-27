@@ -20,7 +20,10 @@ telegram-relay:
     enabled: true
     botToken: tg_bot_token
     chatID: tg_chat_id
-    
 
-
+# example custom http put server https://gist.github.com/vakarianplay/600712d395e97783e350f3a890313583
+custom-relay:
+    enabled: true
+    url: http://your_http_put_server
+    authToken: Generate 'openssl rand -hex 32'
 
