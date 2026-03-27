@@ -29,6 +29,7 @@
 >* Integration with narodmon.ru
 >* Relay messages from radio to telegtam group
 >* Relay messages to matrix room (without enctyprion)
+>* Relay messages to your http server by PUT-request. [Example server on bash](https://gist.github.com/vakarianplay/600712d395e97783e350f3a890313583)
 >* Auto trying to reconnect 
 
 
