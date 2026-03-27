@@ -17,7 +17,7 @@
 
 ## 🛠️ Releases: 
 
-> For windows x64 and linux x64, armv7, arm64: [https://github.com/vakarianplay/Gosling_tgbot/releases](https://github.com/vakarianplay/GoMeshtasticBot/releases/tag/v1.0)
+> For windows x64 and linux x64, armv7, arm64: [https://github.com/vakarianplay/Gosling_tgbot/releases](https://github.com/vakarianplay/GoMeshtasticBot/releases/)
 
 
 ## 💎 Features
