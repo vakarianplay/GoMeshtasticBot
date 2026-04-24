@@ -13,6 +13,7 @@
 <img width="300" alt="image_2026-03-24_08-08-18" src="https://github.com/user-attachments/assets/cbedc4ff-e92c-4513-9fb3-f1d14e96933c" />
 <img width="300" alt="image_2026-03-24_08-08-15" src="https://github.com/user-attachments/assets/94592aeb-f8ce-4e4c-a115-b4eb2d7f0adf" />
 
+
 -------------------------
 
 ## 🛠️ Releases: 
@@ -48,7 +49,9 @@
 >* mautrix: maunium.net/go/mautrix
 
 
+---------------------------------------
 
+<video width="100" alt="mesh_vid" src="https://github.com/user-attachments/assets/e84602fd-5209-4853-b46c-af6acc9d8918" />
 ## 🔧 Build
 
 >* `go build ./messages.go ./cfgload.go ./csvprocessor.go ./relayer.go`
