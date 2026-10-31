@@ -94,7 +94,7 @@ jobs:
           # Build the entire root package.
           # The main function is defined in messages.go.
           go build \
-            -mod=readonly \
+            # -mod=readonly \
             -trimpath \
             -ldflags="-s -w" \
             -o "$package_dir/$binary" \
