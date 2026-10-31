@@ -1,0 +1,175 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_NAME: GoMeshtasticBot
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-22.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            goos: linux
+            goarch: amd64
+            goarm: ""
+            cc: gcc
+            compiler: gcc
+            extension: ""
+
+          - target: linux-armv7
+            goos: linux
+            goarch: arm
+            goarm: "7"
+            cc: arm-linux-gnueabihf-gcc
+            compiler: gcc-arm-linux-gnueabihf
+            extension: ""
+
+          - target: linux-arm64
+            goos: linux
+            goarch: arm64
+            goarm: ""
+            cc: aarch64-linux-gnu-gcc
+            compiler: gcc-aarch64-linux-gnu
+            extension: ""
+
+          - target: linux-riscv64
+            goos: linux
+            goarch: riscv64
+            goarm: ""
+            cc: riscv64-linux-gnu-gcc
+            compiler: gcc-riscv64-linux-gnu
+            extension: ""
+
+          - target: windows-x64
+            goos: windows
+            goarch: amd64
+            goarm: ""
+            cc: x86_64-w64-mingw32-gcc
+            compiler: gcc-mingw-w64-x86-64
+            extension: ".exe"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install compiler and archiver
+        env:
+          COMPILER_PACKAGE: ${{ matrix.compiler }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            "$COMPILER_PACKAGE" zip
+
+      - name: Download and verify dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          CGO_ENABLED: "1"
+          CC: ${{ matrix.cc }}
+          EXE_EXTENSION: ${{ matrix.extension }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p package dist
+
+          go build \
+            -mod=readonly \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o "package/${APP_NAME}${EXE_EXTENSION}" \
+            .
+
+          cp README.md config.yml package/
+
+      - name: Create archive
+        env:
+          TARGET: ${{ matrix.target }}
+          TARGET_OS: ${{ matrix.goos }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          archive="${APP_NAME}_${VERSION}_${TARGET}"
+
+          if [[ "$TARGET_OS" == "windows" ]]; then
+            (
+              cd package
+              zip -9 "../dist/${archive}.zip" \
+                "${APP_NAME}.exe" README.md config.yml
+            )
+          else
+            chmod +x "package/${APP_NAME}"
+
+            tar -czf "dist/${archive}.tar.gz" \
+              -C package \
+              "$APP_NAME" README.md config.yml
+          fi
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: |
+          sha256sum *.tar.gz *.zip > SHA256SUMS.txt
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: GoMeshtasticBot ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS.txt
