@@ -71,6 +71,7 @@ jobs:
           go mod download
           go mod verify
 
+
       - name: Build and package
         env:
           GOOS: ${{ matrix.goos }}
@@ -91,14 +92,7 @@ jobs:
 
           mkdir -p "$package_dir" dist
 
-          # Build the entire root package.
-          # The main function is defined in messages.go.
-          go build \
-            # -mod=readonly \
-            -trimpath \
-            -ldflags="-s -w" \
-            -o "$package_dir/$binary" \
-            .
+          go build -mod=readonly -trimpath -ldflags="-s -w" -o "$package_dir/$binary" .
 
           cp config.yml README.md "$package_dir/"
 
