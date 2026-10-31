@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_NAME: relayer
+  APP_NAME: GoMeshBot
   CGO_ENABLED: "0"
 
 jobs:
