@@ -4,8 +4,8 @@
 ![alt text](https://img.shields.io/badge/Telegram%20integration-gray?style=flat-square&logo=telegram)
 ![alt text](https://img.shields.io/badge/Matrix%20integration-gray?style=flat-square&logo=matrix)
 
-
-![alt text](https://img.shields.io/badge/Status-in%20complete-2E8B57?style=for-the-badge&logo=Buddy)
+<!-- ![alt text](https://img.shields.io/badge/Status-in%20complete-2E8B57?style=for-the-badge&logo=Buddy) -->
+![alt text](https://img.shields.io/badge/Status-in%20progress-orange?style=for-the-badge&logo=Buddy)
 
 ### Ping and informer bot for meshtastic node in one execute file
 
