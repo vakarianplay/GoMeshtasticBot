@@ -1,0 +1,52 @@
+
+
+mesh_device:
+    type: meshcore / meshtastic
+    port: node_port or node_ip
+    node_info_text: Your text for /nodeinfo command
+
+
+meshcore_send_settings:
+     channel: hash-tag-channel
+     region: mow
+
+
+informers:
+    openweathermap_enable: true
+    openweathermap_api_key: api_key
+    openweathermap_city: Moscow,RU
+    
+    narodmon_enable: true
+    narodmon_api_key: api_key
+    narodmon_uuid: random uuid
+    narodmon_sensor_id: sensor_id
+
+    meshcoretel_enable: true
+    onemesh_enable: true
+
+
+radio_telemetry:
+    radio_telemetry: enable
+    remote_sensor_id: publickey (for meshcore) or nodeid (for meshtastic) 
+    
+
+
+matrix-relay:
+    enabled: true
+    homeserver: https://matrix.org
+    username: user
+    password: pass
+    device_id: MESHBOT
+    matrixRoomID: "!room_id:matrix.org"
+
+telegram-relay:
+    enabled: true
+    botToken: tg_bot_token
+    chatID: tg_chat_id
+
+# example custom http put server https://gist.github.com/vakarianplay/600712d395e97783e350f3a890313583
+custom-relay:
+    enabled: true
+    url: http://your_http_put_server
+    authToken: Generate 'openssl rand -hex 32'
+
